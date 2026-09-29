@@ -27,3 +27,15 @@ jobs:
         run: dotnet run --project tests/FileFlow.Checks -c Release --no-build
       - name: Verify portable publish
         run: dotnet publish src/FileFlow/FileFlow.csproj -c Release --no-restore --self-contained false -o artifacts/FileFlow
+      - name: Include license and launch instructions
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE artifacts/FileFlow/LICENSE.txt
+          Copy-Item docs/PORTABLE.txt artifacts/FileFlow/READ-ME.txt
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v7
+        with:
+          name: FileFlow-Windows
+          path: artifacts/FileFlow/
+          if-no-files-found: error
+          retention-days: 30

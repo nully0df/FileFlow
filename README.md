@@ -1,15 +1,21 @@
+<img src="docs/fileflow-mark.png" width="64" height="64" alt="FileFlow mark">
+
 # FileFlow
+
+[![Build and checks](https://github.com/nully0df/FileFlow/actions/workflows/build.yml/badge.svg)](https://github.com/nully0df/FileFlow/actions/workflows/build.yml)
 
 **A place for every file.** A Windows desktop utility that organizes a folder by file type, shows every destination before moving anything, and keeps a persistent undo history.
 
 Built with **C# · .NET 10 · WinForms**. No third-party packages. No accounts, uploads or background watcher.
+
+The **Stillwater** interface pairs a sage sidebar, teal actions and rounded surfaces with native Windows window controls. Its original mark, drawing components and palette are documented in the [design guide](docs/DESIGN.md).
 
 ![FileFlow showing a real preview of synthetic sample files](docs/fileflow-preview.png)
 
 ## What it does
 
 - Preview files and their exact destinations before applying a batch.
-- Choose individual files with checkboxes.
+- Choose individual files with checkboxes, or use **Select all** and **Clear**.
 - Edit extension-to-folder rules; settings persist between launches.
 - Resolve existing names with suffixes such as `report (1).pdf`.
 - Refuse new conflicts that appear after the preview, without overwriting anything.
@@ -36,6 +42,8 @@ The example image uses synthetic text fixtures with representative extensions, n
 
 Requires Windows and the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). The portable build is framework-dependent; the runtime is not bundled.
 
+To download a build, open the latest successful [Build and checks run](https://github.com/nully0df/FileFlow/actions/workflows/build.yml), then download **FileFlow-Windows** under **Artifacts**. GitHub requires sign-in for artifact downloads; builds are retained for 30 days. Extract the entire archive and launch `FileFlow.exe`.
+
 With the .NET 10 SDK installed, run from the repository root:
 
 ```powershell
@@ -47,7 +55,7 @@ dotnet run --project src/FileFlow
 3. Click **Move N files** and confirm the displayed count.
 4. Use **Undo latest** to restore the most recent remaining batch.
 
-**Sorting rules** lets you edit categories, enable or disable them, add rows and remove a selected row with Delete. Extensions use a leading dot and are separated with commas. Matching ignores extension case.
+**Sorting rules** lets you edit categories, enable or disable them, and use **Add rule** or **Remove selected**. Invalid or duplicate extensions show an explanation inside the editor. Extensions use a leading dot and are separated with commas. Matching ignores extension case.
 
 ![Editable rules](docs/fileflow-rules.png)
 
@@ -87,9 +95,9 @@ dotnet run --project tests/FileFlow.Checks -c Release --no-build
 dotnet run --project tests/FileFlow.UiChecks -c Release --no-build -- artifacts/ui
 ```
 
-The package-free check runner returns a nonzero exit code on failure. It covers 30 filesystem scenarios: collisions, stale previews, partial failures, cancellation, path containment, occupied originals, modified content, persistent history and interrupted operations. The Windows UI harness exercises the actual forms with generated files, including checkbox selection, moving, undo, rule editing and settings reload. It renders ordinary and compact layouts to PNG and checks for cross-thread UI access. It supplies confirmations directly; native file-picker and message-box interaction is a separate manual check.
+The package-free check runner returns a nonzero exit code on failure. It covers 30 filesystem scenarios: collisions, stale previews, partial failures, cancellation, path containment, occupied originals, modified content, persistent history and interrupted operations. The Windows UI harness exercises the actual forms with generated files, including bulk and individual selection, moving, undo, rule controls, inline validation and settings reload. It renders ordinary and compact layouts, the empty state, the rule editor and a confirmation dialog to PNG, and checks for cross-thread UI access. Move and undo confirmations are supplied directly; cancellation of the real confirmation form is also exercised. Native file-picker interaction remains a manual check.
 
-GitHub Actions is configured to build and run the filesystem checks on Windows. The UI harness is run locally; a successful local check is not a claim that remote CI has already run.
+GitHub Actions builds, runs the filesystem checks and uploads the portable Windows build. The UI harness runs locally. The screenshots in this repository were rendered from the forms at Windows scaling of 125%; they do not capture live desktop compositor effects.
 
 Create a portable build:
 
@@ -110,13 +118,16 @@ Distribute the entire `artifacts/FileFlow` folder, not only the executable.
 | `FileFlow.Core/JournalStore.cs` | Persistent JSON history and an exclusive operation lock |
 | `FileFlow/MainForm.cs` | Preview, selection and asynchronous user actions |
 | `FileFlow/RulesForm.cs` | Rule editor |
+| `FileFlow/DecisionForm.cs` | Move and undo confirmation |
+| `FileFlow/Theme.cs`, `FlowControls.cs`, `FileGridStyle.cs` | Shared palette, controls, glyphs and table styling |
+| `FileFlow/Branding.cs`, `FlowForm.cs` | Original vector mark, Windows icon and native window treatment |
 | `tests/` | Filesystem and form-level checks using generated fixtures |
 
 For a step-by-step Russian explanation and small exercises, see [Разбор проекта](docs/LEARNING.ru.md).
 
 ## Next ideas
 
-Not implemented in v0.1: optional recursion with exclusions, date-based folder rules, an operation-history browser and rule import/export. Automatic background sorting is intentionally outside the initial scope.
+Not implemented in v0.2: optional recursion with exclusions, date-based folder rules, an operation-history browser and rule import/export. Automatic background sorting is intentionally outside the initial scope.
 
 ## License
 

@@ -1,0 +1,16 @@
+FileFlow 0.2.0 for Windows
+
+1. Extract the entire archive to a folder.
+2. Install the .NET 10 Desktop Runtime if Windows asks for it:
+   https://dotnet.microsoft.com/en-us/download/dotnet/10.0
+3. Launch FileFlow.exe. Keep all the supplied files together.
+4. Click "Try a sample folder" to explore preview, selection, moving and undo.
+
+The sample contains synthetic text fixtures, not real media.
+FileFlow scans only the files directly inside the chosen folder.
+Settings and undo history live in %LOCALAPPDATA%\FileFlow.
+
+Source, instructions and limitations:
+https://github.com/nully0df/FileFlow
+
+MIT license. See LICENSE.txt.

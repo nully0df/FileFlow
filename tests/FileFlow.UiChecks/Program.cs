@@ -15,6 +15,7 @@ internal static class Program
         string testRoot = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.Combine(Path.GetTempPath(), "FileFlow.UiChecks", Guid.NewGuid().ToString("N"));
         string data = Path.Combine(testRoot, "session-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(data);
+        Branding.Export(Path.Combine(testRoot, "brand"));
         int result = 1;
         using var form = new MainForm(data, (_, _) => true);
         form.Shown += async (_, _) =>
@@ -28,21 +29,28 @@ internal static class Program
                 var move = controls.OfType<Button>().Single(b => b.Text == "Move selected");
                 var grid = controls.OfType<DataGridView>().Single();
                 var folder = controls.OfType<TextBox>().Single();
+                Console.WriteLine($"Rendered at {form.DeviceDpi} DPI, client {form.ClientSize}");
                 Check(!move.Enabled && !undo.Enabled, "Initial state cannot move or undo");
+                await Task.Delay(80);
+                Save(form, Path.Combine(testRoot, "fileflow-empty.png"));
                 sample.PerformClick();
                 await Until(() => preview.Enabled && grid.Rows.Count == 7);
                 Check(move.Text == "Move 6 files", "Sample preview has six matching files");
                 Check(grid.Rows.Cast<DataGridViewRow>().Count(r => Convert.ToString(r.Cells[5].Value) == "New name") == 1, "Collision is visible in preview");
-                // Use a shorter actual folder label for a legible public screenshot. Only the
-                // TextBox's horizontal scroll position changes; the data and preview are real.
+                // Show the end of the real fixture path without changing the previewed folder.
                 folder.SelectionStart = folder.TextLength; folder.ScrollToCaret(); grid.Focus();
                 Save(form, Path.Combine(testRoot, "fileflow-preview.png"));
-                form.ClientSize = new Size(1034, 681);
+                var originalSize = form.ClientSize;
+                form.ClientSize = new Size((int)(1034 * form.DeviceDpi / 96f), (int)(681 * form.DeviceDpi / 96f));
                 await Task.Delay(100);
                 Save(form, Path.Combine(testRoot, "fileflow-compact.png"));
-                form.ClientSize = new Size(1240, 810);
+                form.ClientSize = originalSize;
                 var root = folder.Text;
                 var first = grid.Rows.Cast<DataGridViewRow>().First(r => r.Tag is PlanItem);
+                controls.OfType<Button>().Single(b => b.Text == "Clear").PerformClick();
+                Check(!move.Enabled, "Clear selection disables moving");
+                controls.OfType<Button>().Single(b => b.Text == "Select all").PerformClick();
+                Check(move.Text == "Move 6 files", "Select all excludes the skipped file");
                 first.Cells[0].Value = false;
                 Check(move.Text == "Move 5 files", "Selection updates the move count");
                 first.Cells[0].Value = true;
@@ -51,6 +59,13 @@ internal static class Program
                 Check(Directory.GetFiles(root).Length == 1, "Move action left only unmatched file at root");
                 Check(File.ReadAllText(Path.Combine(root, "Documents", "Meeting notes.txt")).StartsWith("An existing sample"), "Collision preserved the existing file");
                 Check(File.Exists(Path.Combine(root, "Documents", "Meeting notes (1).txt")), "Renamed file moved to the previewed name");
+                using (var confirmPreview = new DecisionForm("Move 6 files into the folders shown in the preview?\n\nExisting files will not be overwritten. You can undo this operation.", "Organize files"))
+                {
+                    confirmPreview.Show(form); await Task.Delay(80);
+                    Save(confirmPreview, Path.Combine(testRoot, "fileflow-confirm.png"));
+                    Descendants(confirmPreview).OfType<Button>().Single(b => b.Text == "Cancel").PerformClick();
+                    Check(confirmPreview.DialogResult == DialogResult.Cancel, "Confirmation cancellation remains available");
+                }
                 undo.PerformClick();
                 await Until(() => preview.Enabled && !undo.Enabled);
                 Check(Directory.GetFiles(root).Length == 7, "Undo action restored all six files");
@@ -71,6 +86,18 @@ internal static class Program
                         Save(dialog, Path.Combine(testRoot, "fileflow-rules.png"));
                         var fields = Descendants(dialog).ToArray();
                         var rulesGrid = fields.OfType<DataGridView>().Single();
+                        var count = rulesGrid.Rows.Count;
+                        fields.OfType<Button>().Single(b => b.Text == "Add rule").PerformClick();
+                        Check(rulesGrid.Rows.Count == count + 1, "Add rule creates an editable row");
+                        rulesGrid.EndEdit();
+                        fields.OfType<Button>().Single(b => b.Text == "Remove selected").PerformClick();
+                        Check(rulesGrid.Rows.Count == count, "Remove selected removes the added rule");
+                        rulesGrid.Rows.Clear();
+                        rulesGrid.Rows.Add(true, "Notes", ".txt");
+                        rulesGrid.Rows.Add(true, "Duplicate", ".txt");
+                        fields.OfType<Button>().Single(b => b.Text == "Save rules").PerformClick();
+                        Check(dialog.Visible && fields.OfType<Label>().Any(l => l.Text.Contains(".txt") && l.Text.Contains("more than one")),
+                            "Duplicate extensions keep the editor open with an inline explanation");
                         rulesGrid.Rows.Clear(); rulesGrid.Rows.Add(true, "Notes", ".txt");
                         fields.OfType<Button>().Single(b => b.Text == "Save rules").PerformClick();
                     }

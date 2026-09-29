@@ -2,39 +2,41 @@ using FileFlow.Core;
 
 namespace FileFlow;
 
-public sealed class MainForm : Form
+public sealed class MainForm : FlowForm
 {
     private Preferences _preferences = new();
     private readonly JournalStore _history;
     private readonly Func<string, string, bool> _confirm;
     private readonly TextBox _folder = new() { Dock = DockStyle.Fill, Font = new Font("Segoe UI", 11), PlaceholderText = "Choose a folder to organize…", Margin = new Padding(0, 9, 12, 0) };
     private readonly DataGridView _files = Theme.Grid();
-    private readonly Button _browse = Theme.Button("Choose folder");
-    private readonly Button _preview = Theme.Button("Preview files", true);
-    private readonly Button _apply = Theme.Button("Move selected", true);
-    private readonly Button _undo = Theme.Button("Undo latest");
-    private readonly Button _rules = Theme.Button("Sorting rules");
-    private readonly Button _demo = Theme.Button("Try a sample folder");
-    private readonly Button _cancel = Theme.Button("Cancel");
+    private readonly FlowButton _browse = Theme.Button("Choose folder");
+    private readonly FlowButton _preview = Theme.Button("Preview files", true);
+    private readonly FlowButton _apply = Theme.Button("Move selected", true);
+    private readonly FlowButton _undo = Theme.Button("Undo latest");
+    private readonly FlowButton _rules = Theme.Button("Sorting rules");
+    private readonly FlowButton _demo = Theme.Button("Try a sample folder");
+    private readonly FlowButton _cancel = Theme.Button("Cancel");
+    private readonly FlowButton _selectAll = Theme.Button("Select all");
+    private readonly FlowButton _selectNone = Theme.Button("Clear");
     private readonly Label _status = Theme.Label("Choose a folder, then preview where each file will go.", 9, color: Theme.Muted);
     private readonly Label _summary = Theme.Label("0 files selected", 13, true);
-    private readonly Label _categorySummary = Theme.Label("6 built-in categories · editable rules", 9, color: Theme.Muted);
-    private readonly Label _empty = Theme.Label("A little order goes a long way.\n\nYour file preview will appear here.\nStart with a sample folder to see how it works.", 12, color: Theme.Muted);
+    private readonly FlowLayoutPanel _categories = new();
+    private readonly EmptyState _empty = new() { Text = "Space for a fresh start.\nChoose a folder to see where everything belongs.\nOr take FileFlow for a spin with a sample folder." };
     private readonly ProgressBar _progress = new() { Dock = DockStyle.Fill, Height = 4, Visible = false };
-    private readonly Label _step = Theme.Label("01   CHOOSE     /     02   PREVIEW     /     03   ORGANIZE", 9, true, Theme.Muted);
     private SortingPlan? _plan;
     private CancellationTokenSource? _cancellation;
     private bool _busy;
     private bool _hasHistory;
+    private bool _selectionChanging;
 
     public MainForm(string? dataDirectory = null, Func<string, string, bool>? confirm = null)
     {
+        SuspendLayout();
         if (dataDirectory is not null) Preferences.DataDirectory = Path.GetFullPath(dataDirectory);
         _history = new(Path.Combine(Preferences.DataDirectory, "history"));
-        _confirm = confirm ?? ((message, title) => MessageBox.Show(this, message, title,
-            MessageBoxButtons.OKCancel, MessageBoxIcon.Information) == DialogResult.OK);
+        _confirm = confirm ?? ((message, title) => DecisionForm.Confirm(this, message, title));
         Text = "FileFlow · A place for every file";
-        ClientSize = new Size(1240, 810);
+        ClientSize = new Size(1160, 800);
         MinimumSize = new Size(1050, 720);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Theme.Background;
@@ -50,106 +52,142 @@ public sealed class MainForm : Form
         _cancel.Click += (_, _) => { _cancellation?.Cancel(); _status.Text = "Stopping safely after the current file…"; };
         _folder.TextChanged += (_, _) => { if (!_busy) InvalidatePreview(); };
         _files.CurrentCellDirtyStateChanged += (_, _) => { if (_files.IsCurrentCellDirty) _files.CommitEdit(DataGridViewDataErrorContexts.Commit); };
-        _files.CellValueChanged += (_, _) => UpdateSelection();
+        _files.CellValueChanged += (_, _) => { if (!_selectionChanging) UpdateSelection(); };
         FormClosing += (_, e) => { if (_busy) { e.Cancel = true; _cancellation?.Cancel(); _status.Text = "Stopping safely. Close the window once the operation has finished."; } };
         try { _preferences = Preferences.Load(); _folder.Text = _preferences.LastFolder; }
         catch (Exception ex) when (Expected(ex)) { _status.Text = "Settings could not be loaded. Default rules are active."; }
         RefreshHistory();
         UpdateRulesSummary();
         UpdateButtons();
+        AutoScaleDimensions = new SizeF(96, 96);
+        ResumeLayout(true);
     }
 
     private void BuildLayout()
     {
-        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-        shell.ColumnStyles.Add(new(SizeType.Absolute, 222));
+        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, BackColor = Theme.Background };
+        shell.ColumnStyles.Add(new(SizeType.Absolute, 224));
         shell.ColumnStyles.Add(new(SizeType.Percent, 100));
         shell.RowStyles.Add(new(SizeType.Percent, 100));
-        var side = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 34, 52), Padding = new Padding(22, 28, 22, 22), ColumnCount = 1, RowCount = 9, Margin = Padding.Empty };
-        foreach (var height in new[] { 56, 42, 52, 48, 48, 22 }) side.RowStyles.Add(new(SizeType.Absolute, height));
+        var side = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Theme.Sidebar, Padding = new Padding(18, 28, 18, 20), ColumnCount = 1, RowCount = 10, Margin = Padding.Empty };
+        foreach (var height in new[] { 74, 44, 46, 48, 48, 12 }) side.RowStyles.Add(new(SizeType.Absolute, height));
         side.RowStyles.Add(new(SizeType.Percent, 100));
-        side.RowStyles.Add(new(SizeType.Absolute, 92));
-        side.RowStyles.Add(new(SizeType.Absolute, 28));
-        side.Controls.Add(Theme.Label("FileFlow", 21, true, Color.White), 0, 0);
-        side.Controls.Add(Theme.Label("LESS CLUTTER. MORE FLOW.", 7, true, Color.FromArgb(145, 159, 184)), 0, 1);
-        var selected = Theme.Label("  Organize files", 10, true, Color.White);
-        selected.BackColor = Color.FromArgb(48, 64, 92);
-        selected.Margin = new Padding(0, 4, 0, 8);
-        side.Controls.Add(selected, 0, 2);
-        foreach (var button in new[] { _rules, _undo })
-        {
-            button.Dock = DockStyle.Fill;
-            button.TextAlign = ContentAlignment.MiddleLeft;
-            button.BackColor = Color.FromArgb(24, 34, 52);
-            button.ForeColor = Color.FromArgb(199, 209, 227);
-            button.FlatAppearance.BorderSize = 0;
-            button.Margin = new Padding(0, 2, 0, 2);
-        }
-        side.Controls.Add(_rules, 0, 3);
-        side.Controls.Add(_undo, 0, 4);
-        side.Controls.Add(Theme.Label("YOU'RE IN CONTROL\n\nPreview every move.\nUndo when you need to.", 9, false, Color.FromArgb(155, 171, 195)), 0, 7);
-        side.Controls.Add(Theme.Label("WINDOWS  /  v0.1.0", 8, true, Color.FromArgb(113, 132, 160)), 0, 8);
+        side.RowStyles.Add(new(SizeType.Absolute, 104));
+        side.RowStyles.Add(new(SizeType.Absolute, 22));
+        side.RowStyles.Add(new(SizeType.Absolute, 30));
+        var brand = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty, BackColor = Color.Transparent };
+        brand.ColumnStyles.Add(new(SizeType.Absolute, 52)); brand.ColumnStyles.Add(new(SizeType.Percent, 100));
+        brand.RowStyles.Add(new(SizeType.Absolute, 36)); brand.RowStyles.Add(new(SizeType.Percent, 100));
+        var mark = new BrandView { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 24) };
+        brand.Controls.Add(mark, 0, 0); brand.SetRowSpan(mark, 2);
+        brand.Controls.Add(Theme.Label("FileFlow", 18, true), 1, 0);
+        var tagline = Theme.Label("A little more space.", 8.5f, color: Theme.Muted); tagline.TextAlign = ContentAlignment.TopLeft;
+        brand.Controls.Add(tagline, 1, 1);
+        side.Controls.Add(brand, 0, 0);
+        side.Controls.Add(Theme.Label("WORKSPACE", 8, true, Theme.Muted), 0, 1);
+        var active = new SurfacePanel { Dock = DockStyle.Fill, Radius = 12, SurfaceColor = Theme.Surface, Outline = false, Padding = new Padding(14, 0, 10, 0), Margin = Padding.Empty };
+        active.Controls.Add(Theme.Label("Organize files", 10, true, Theme.Accent));
+        side.Controls.Add(active, 0, 2);
+        _rules.Appearance = _undo.Appearance = ButtonAppearance.Navigation;
+        _rules.Symbol = Glyph.Sliders; _undo.Symbol = Glyph.Undo;
+        foreach (var button in new[] { _rules, _undo }) { button.Dock = DockStyle.Fill; button.Margin = new Padding(0, 3, 0, 1); }
+        side.Controls.Add(_rules, 0, 3); side.Controls.Add(_undo, 0, 4);
+        var note = new SurfacePanel { Dock = DockStyle.Fill, Radius = 16, SurfaceColor = Theme.AccentSoft, Outline = false, Padding = new Padding(14), Margin = Padding.Empty };
+        var noteText = Theme.Label("A little peace of mind.\n\nYour moves stay saved\nfor another day.", 8.5f, color: Theme.Muted);
+        noteText.TextAlign = ContentAlignment.TopLeft; note.Controls.Add(noteText);
+        side.Controls.Add(note, 0, 7);
+        side.Controls.Add(Theme.Label("LOCAL FILES. YOUR CONTROL.", 7.5f, true, Theme.Muted), 0, 9);
         shell.Controls.Add(side, 0, 0);
 
-        var main = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28, 20, 28, 22), ColumnCount = 1, RowCount = 6, Margin = Padding.Empty };
-        foreach (var height in new[] { 104, 116, 84 }) main.RowStyles.Add(new(SizeType.Absolute, height));
+        var main = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(30, 24, 30, 22), ColumnCount = 1, RowCount = 6, Margin = Padding.Empty };
+        main.RowStyles.Add(new(SizeType.Absolute, 82));
+        main.RowStyles.Add(new(SizeType.Absolute, 120));
+        main.RowStyles.Add(new(SizeType.Absolute, 48));
         main.RowStyles.Add(new(SizeType.Percent, 100));
-        main.RowStyles.Add(new(SizeType.Absolute, 44));
-        main.RowStyles.Add(new(SizeType.Absolute, 68));
-        var heading = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty };
-        heading.RowStyles.Add(new(SizeType.Absolute, 24));
-        heading.RowStyles.Add(new(SizeType.Absolute, 44));
-        heading.RowStyles.Add(new(SizeType.Percent, 100));
-        heading.Controls.Add(_step, 0, 0);
-        heading.Controls.Add(Theme.Label("A place for every file.", 25, true), 0, 1);
-        heading.Controls.Add(Theme.Label("Turn a crowded folder into a clear workspace, one preview at a time.", 10, color: Theme.Muted), 0, 2);
+        main.RowStyles.Add(new(SizeType.Absolute, 34));
+        main.RowStyles.Add(new(SizeType.Absolute, 76));
+        var heading = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty };
+        heading.ColumnStyles.Add(new(SizeType.Percent, 100)); heading.ColumnStyles.Add(new(SizeType.Absolute, 205));
+        heading.RowStyles.Add(new(SizeType.Absolute, 47)); heading.RowStyles.Add(new(SizeType.Percent, 100));
+        heading.Controls.Add(Theme.Label("Everything, in its place.", 24, true), 0, 0);
+        var subtitle = Theme.Label("A calmer folder starts with a clear preview.", 10, color: Theme.Muted);
+        subtitle.TextAlign = ContentAlignment.TopLeft; heading.Controls.Add(subtitle, 0, 1);
+        _demo.Dock = DockStyle.Fill; _demo.Margin = new Padding(0, 6, 0, 4);
+        heading.Controls.Add(_demo, 1, 0);
         main.Controls.Add(heading, 0, 0);
 
-        var folderCard = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(16, 8, 16, 10), ColumnCount = 3, RowCount = 3, Margin = new Padding(0, 12, 0, 0) };
-        folderCard.ColumnStyles.Add(new(SizeType.Percent, 100));
-        folderCard.ColumnStyles.Add(new(SizeType.Absolute, 142));
-        folderCard.ColumnStyles.Add(new(SizeType.Absolute, 142));
-        folderCard.RowStyles.Add(new(SizeType.Absolute, 25));
-        folderCard.RowStyles.Add(new(SizeType.Absolute, 43));
-        folderCard.RowStyles.Add(new(SizeType.Percent, 100));
-        var folderTitle = Theme.Label("SOURCE FOLDER", 8, true, Theme.Muted);
-        folderCard.Controls.Add(folderTitle, 0, 0); folderCard.SetColumnSpan(folderTitle, 3);
-        folderCard.Controls.Add(_folder, 0, 1);
-        _browse.Dock = DockStyle.Fill; _preview.Dock = DockStyle.Fill;
-        folderCard.Controls.Add(_browse, 1, 1); folderCard.Controls.Add(_preview, 2, 1);
-        var hint = Theme.Label("Files in this folder only. Subfolders and unmatched files stay in place.", 8, color: Theme.Muted);
-        folderCard.Controls.Add(hint, 0, 2); folderCard.SetColumnSpan(hint, 3);
-        main.Controls.Add(folderCard, 0, 1);
+        var source = new SurfacePanel { Dock = DockStyle.Fill, Radius = 20, Padding = new Padding(19, 12, 19, 11), Margin = Padding.Empty,
+            SurfaceColor = Theme.Surface, EndColor = Theme.HighContrast ? null : Color.FromArgb(244, 251, 247) };
+        var sourceLayout = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.Transparent, ColumnCount = 3, RowCount = 3, Margin = Padding.Empty };
+        sourceLayout.ColumnStyles.Add(new(SizeType.Percent, 100)); sourceLayout.ColumnStyles.Add(new(SizeType.Absolute, 148)); sourceLayout.ColumnStyles.Add(new(SizeType.Absolute, 148));
+        sourceLayout.RowStyles.Add(new(SizeType.Absolute, 26)); sourceLayout.RowStyles.Add(new(SizeType.Absolute, 46)); sourceLayout.RowStyles.Add(new(SizeType.Percent, 100));
+        sourceLayout.Controls.Add(Theme.Label("YOUR FOLDER", 8, true, Theme.Muted), 0, 0);
+        var scope = Theme.Label("Preview first. Move when ready.", 8.5f, color: Theme.Muted); scope.TextAlign = ContentAlignment.MiddleRight;
+        sourceLayout.Controls.Add(scope, 1, 0); sourceLayout.SetColumnSpan(scope, 2);
+        var input = new SurfacePanel { Dock = DockStyle.Fill, Radius = 11, SurfaceColor = Theme.Background, Padding = new Padding(13, 12, 10, 9), Margin = new Padding(0, 0, 8, 0) };
+        _folder.BorderStyle = BorderStyle.None; _folder.BackColor = Theme.Background; _folder.ForeColor = Theme.Ink;
+        _folder.Font = new Font("Segoe UI", 10); _folder.Margin = Padding.Empty; _folder.AccessibleName = "Source folder path";
+        input.Controls.Add(_folder); sourceLayout.Controls.Add(input, 0, 1);
+        _browse.Dock = _preview.Dock = DockStyle.Fill; _browse.Symbol = Glyph.Folder; _preview.Symbol = Glyph.Scan;
+        sourceLayout.Controls.Add(_browse, 1, 1); sourceLayout.Controls.Add(_preview, 2, 1);
+        var hint = Theme.Label("Files in this folder only · Subfolders stay as they are", 8.5f, color: Theme.Muted);
+        sourceLayout.Controls.Add(hint, 0, 2); sourceLayout.SetColumnSpan(hint, 3);
+        source.Controls.Add(sourceLayout); main.Controls.Add(source, 0, 1);
 
-        var summary = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Padding = new Padding(0, 14, 0, 12), Margin = Padding.Empty };
-        summary.ColumnStyles.Add(new(SizeType.Percent, 100)); summary.ColumnStyles.Add(new(SizeType.Absolute, 188));
-        summary.RowStyles.Add(new(SizeType.Percent, 55)); summary.RowStyles.Add(new(SizeType.Percent, 45));
-        summary.Controls.Add(_summary, 0, 0); summary.Controls.Add(_categorySummary, 0, 1);
-        _demo.Dock = DockStyle.Fill; _demo.Margin = new Padding(0, 5, 0, 5);
-        summary.Controls.Add(_demo, 1, 0); summary.SetRowSpan(_demo, 2);
-        main.Controls.Add(summary, 0, 2);
+        _categories.Dock = DockStyle.Fill; _categories.Padding = new Padding(0, 13, 0, 9);
+        _categories.Margin = Padding.Empty; _categories.WrapContents = false; _categories.AutoScroll = true;
+        main.Controls.Add(_categories, 0, 2);
 
-        _files.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "", Width = 38, AutoSizeMode = DataGridViewAutoSizeColumnMode.None });
-        foreach (var column in new[] { ("File", "File name", 115f), ("Category", "Category", 65f), ("Size", "Size", 48f), ("Destination", "Destination", 155f), ("Status", "Status", 68f) })
+        var previewCard = new SurfacePanel { Dock = DockStyle.Fill, Radius = 20, Padding = new Padding(13, 5, 13, 13), Margin = Padding.Empty };
+        var previewLayout = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Color.Transparent, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+        previewLayout.RowStyles.Add(new(SizeType.Absolute, 52)); previewLayout.RowStyles.Add(new(SizeType.Percent, 100));
+        var toolbar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Color.Transparent, Margin = Padding.Empty, Padding = new Padding(8, 4, 0, 6) };
+        toolbar.ColumnStyles.Add(new(SizeType.Percent, 100)); toolbar.ColumnStyles.Add(new(SizeType.Absolute, 104)); toolbar.ColumnStyles.Add(new(SizeType.Absolute, 76));
+        toolbar.Controls.Add(Theme.Label("Review your files", 11, true), 0, 0);
+        _selectAll.Appearance = _selectNone.Appearance = ButtonAppearance.Quiet;
+        _selectAll.Dock = _selectNone.Dock = DockStyle.Fill;
+        _selectAll.Click += (_, _) => SetSelection(true); _selectNone.Click += (_, _) => SetSelection(false);
+        toolbar.Controls.Add(_selectAll, 1, 0); toolbar.Controls.Add(_selectNone, 2, 0);
+        previewLayout.Controls.Add(toolbar, 0, 0);
+        _files.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "", Width = 36, AutoSizeMode = DataGridViewAutoSizeColumnMode.None });
+        foreach (var column in new[] { ("File", "File name", 135f), ("Category", "Category", 60f), ("Size", "Size", 44f), ("Destination", "Destination", 132f), ("Status", "Status", 63f) })
             _files.Columns.Add(new DataGridViewTextBoxColumn { Name = column.Item1, HeaderText = column.Item2, FillWeight = column.Item3, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
-        var gridHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Margin = Padding.Empty };
-        gridHost.Controls.Add(_files);
-        _empty.TextAlign = ContentAlignment.MiddleCenter;
-        gridHost.Controls.Add(_empty); _empty.BringToFront();
-        main.Controls.Add(gridHost, 0, 3);
+        _files.Columns[1].MinimumWidth = 135; _files.Columns[5].MinimumWidth = 91;
+        _files.AccessibleName = "File preview and selection";
+        FileGridStyle.Attach(_files);
+        var gridHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface, Margin = Padding.Empty };
+        gridHost.Controls.Add(_files); gridHost.Controls.Add(_empty); _empty.BringToFront();
+        _files.Visible = false;
+        previewLayout.Controls.Add(gridHost, 0, 1); previewCard.Controls.Add(previewLayout); main.Controls.Add(previewCard, 0, 3);
+        _status.AccessibleName = "Operation status";
         main.Controls.Add(_status, 0, 4);
 
-        var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = Padding.Empty };
-        bottom.ColumnStyles.Add(new(SizeType.Percent, 100)); bottom.ColumnStyles.Add(new(SizeType.Absolute, 104)); bottom.ColumnStyles.Add(new(SizeType.Absolute, 174));
-        bottom.RowStyles.Add(new(SizeType.Absolute, 7)); bottom.RowStyles.Add(new(SizeType.Percent, 100));
-        bottom.Controls.Add(_progress, 0, 0); bottom.SetColumnSpan(_progress, 3);
-        bottom.Controls.Add(Theme.Label("No overwrites. No background sorting.", 9, color: Theme.Muted), 0, 1);
-        _cancel.Dock = DockStyle.Fill; _apply.Dock = DockStyle.Fill;
-        _cancel.Margin = new Padding(0, 10, 8, 5); _apply.Margin = new Padding(0, 10, 0, 5);
-        bottom.Controls.Add(_cancel, 1, 1); bottom.Controls.Add(_apply, 2, 1);
-        main.Controls.Add(bottom, 0, 5);
-        shell.Controls.Add(main, 1, 0);
-        Controls.Add(shell);
+        var footer = new SurfacePanel { Dock = DockStyle.Fill, Radius = 18, Padding = new Padding(19, 10, 12, 10), Margin = Padding.Empty };
+        var footerLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, BackColor = Color.Transparent, Margin = Padding.Empty };
+        footerLayout.ColumnStyles.Add(new(SizeType.Percent, 100)); footerLayout.ColumnStyles.Add(new(SizeType.Absolute, 92)); footerLayout.ColumnStyles.Add(new(SizeType.Absolute, 180));
+        footerLayout.RowStyles.Add(new(SizeType.Absolute, 4)); footerLayout.RowStyles.Add(new(SizeType.Percent, 100));
+        footerLayout.Controls.Add(_progress, 0, 0); footerLayout.SetColumnSpan(_progress, 3);
+        var selection = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = Color.Transparent, Margin = Padding.Empty };
+        selection.RowStyles.Add(new(SizeType.Percent, 55)); selection.RowStyles.Add(new(SizeType.Percent, 45));
+        _summary.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        selection.Controls.Add(_summary, 0, 0); selection.Controls.Add(Theme.Label("Existing files are never overwritten.", 8, color: Theme.Muted), 0, 1);
+        footerLayout.Controls.Add(selection, 0, 1);
+        _cancel.Dock = _apply.Dock = DockStyle.Fill; _cancel.Appearance = ButtonAppearance.Quiet; _apply.Symbol = Glyph.Arrow;
+        footerLayout.Controls.Add(_cancel, 1, 1); footerLayout.Controls.Add(_apply, 2, 1);
+        footer.Controls.Add(footerLayout); main.Controls.Add(footer, 0, 5);
+        shell.Controls.Add(main, 1, 0); Controls.Add(shell);
+    }
+
+    private void SetSelection(bool value)
+    {
+        _selectionChanging = true;
+        try
+        {
+            foreach (DataGridViewRow row in _files.Rows)
+                if (row.Tag is PlanItem) row.Cells[0].Value = value;
+        }
+        finally { _selectionChanging = false; }
+        UpdateSelection();
     }
 
     private void Browse()
@@ -187,11 +225,13 @@ public sealed class MainForm : Form
                 _files.Rows[index].Cells[4].ToolTipText = skipped.Reason;
             }
             _empty.Visible = _files.Rows.Count == 0;
+            _files.Visible = !_empty.Visible;
             _empty.Text = "Nothing to organize here.\n\nChoose another folder or adjust your sorting rules.";
             _files.ClearSelection();
             _preferences.LastFolder = plan.Root;
             _status.Text = $"Preview ready · {plan.Items.Count} ready · {plan.Skipped.Count} skipped · No files have moved.";
             SavePreferences();
+            UpdateCategoryCounts();
             UpdateSelection();
         });
     }
@@ -288,10 +328,11 @@ public sealed class MainForm : Form
 
     private void InvalidatePreview()
     {
-        _plan = null; _files.Rows.Clear(); _empty.Visible = true;
+        _plan = null; _files.Rows.Clear(); _empty.Visible = true; _files.Visible = false;
         _empty.Text = "Ready when you are.\n\nChoose a folder and click Preview files.";
         _status.Text = "Create a fresh preview before organizing files.";
         UpdateSelection();
+        UpdateCategoryCounts();
     }
 
     private void UpdateButtons()
@@ -300,6 +341,7 @@ public sealed class MainForm : Form
         _undo.Enabled = !_busy && _hasHistory;
         _apply.Enabled = !_busy && _plan is not null && SelectedItems().Count > 0;
         _cancel.Visible = _busy;
+        _selectAll.Enabled = _selectNone.Enabled = !_busy && _plan is { Items.Count: > 0 };
     }
 
     private void EditRules()
@@ -310,7 +352,23 @@ public sealed class MainForm : Form
         InvalidatePreview(); UpdateRulesSummary(); SavePreferences();
     }
 
-    private void UpdateRulesSummary() => _categorySummary.Text = string.Join("  /  ", _preferences.Rules.Where(r => r.Enabled).Select(r => r.Folder));
+    private void UpdateRulesSummary()
+    {
+        while (_categories.Controls.Count > 0) _categories.Controls[0].Dispose();
+        foreach (var category in _preferences.Rules.Where(r => r.Enabled).Select(r => r.Folder).Distinct())
+        {
+            var chip = new CategoryChip(category);
+            if (IsHandleCreated) chip.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
+            _categories.Controls.Add(chip);
+        }
+        UpdateCategoryCounts();
+    }
+
+    private void UpdateCategoryCounts()
+    {
+        foreach (CategoryChip chip in _categories.Controls)
+            chip.Count = _plan is null ? null : _plan.Items.Count(i => i.Category == chip.CategoryName);
+    }
 
     private void SavePreferences()
     {
