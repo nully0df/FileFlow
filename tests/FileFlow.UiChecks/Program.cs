@@ -32,6 +32,7 @@ internal static class Program
                 Console.WriteLine($"Rendered at {form.DeviceDpi} DPI, client {form.ClientSize}");
                 Check(!move.Enabled && !undo.Enabled, "Initial state cannot move or undo");
                 await Task.Delay(80);
+                ButtonPaintingChecks.Run(controls.OfType<Button>());
                 Save(form, Path.Combine(testRoot, "fileflow-empty.png"));
                 sample.PerformClick();
                 await Until(() => preview.Enabled && grid.Rows.Count == 7);
@@ -43,6 +44,7 @@ internal static class Program
                 var originalSize = form.ClientSize;
                 form.ClientSize = new Size((int)(1034 * form.DeviceDpi / 96f), (int)(681 * form.DeviceDpi / 96f));
                 await Task.Delay(100);
+                ButtonPaintingChecks.Run(controls.OfType<Button>());
                 Save(form, Path.Combine(testRoot, "fileflow-compact.png"));
                 form.ClientSize = originalSize;
                 var root = folder.Text;
@@ -62,6 +64,7 @@ internal static class Program
                 using (var confirmPreview = new DecisionForm("Move 6 files into the folders shown in the preview?\n\nExisting files will not be overwritten. You can undo this operation.", "Organize files"))
                 {
                     confirmPreview.Show(form); await Task.Delay(80);
+                    ButtonPaintingChecks.Run(Descendants(confirmPreview).OfType<Button>());
                     Save(confirmPreview, Path.Combine(testRoot, "fileflow-confirm.png"));
                     Descendants(confirmPreview).OfType<Button>().Single(b => b.Text == "Cancel").PerformClick();
                     Check(confirmPreview.DialogResult == DialogResult.Cancel, "Confirmation cancellation remains available");
@@ -85,6 +88,7 @@ internal static class Program
                     {
                         Save(dialog, Path.Combine(testRoot, "fileflow-rules.png"));
                         var fields = Descendants(dialog).ToArray();
+                        ButtonPaintingChecks.Run(fields.OfType<Button>());
                         var rulesGrid = fields.OfType<DataGridView>().Single();
                         var count = rulesGrid.Rows.Count;
                         fields.OfType<Button>().Single(b => b.Text == "Add rule").PerformClick();

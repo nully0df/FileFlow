@@ -99,6 +99,8 @@ The package-free check runner returns a nonzero exit code on failure. It covers 
 
 GitHub Actions builds, runs the filesystem checks and uploads the portable Windows build. The UI harness runs locally. The screenshots in this repository were rendered from the forms at Windows scaling of 125%; they do not capture live desktop compositor effects.
 
+Button rendering also has a pixel regression check: the framework's paint pipeline must fully repaint a previously used buffer during hover, hover exit, text changes and enabled-state changes. This catches stale labels and black rounded corners that whole-form screenshots can hide by drawing the parent first.
+
 Create a portable build:
 
 ```powershell

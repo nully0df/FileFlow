@@ -35,6 +35,8 @@ Category colors add recognition while visible names carry the meaning: blue for 
 
 Buttons inherit from `Button`, the preview remains a `DataGridView`, and folder selection uses the system dialog. Shared colors fall back to Windows system colors when high contrast is active at launch. Full screen-reader, high-contrast and cross-monitor DPI certification has not been performed.
 
+Custom buttons explicitly clear `ControlStyles.Opaque`, inherited from `ButtonBase`, so the framework paints the parent background before their rounded shape. Without that background pass, untouched parts of a reused graphics buffer can show stale labels or black corners. Pixel checks cover repainting buttons individually as well as rendering the complete forms.
+
 The main forms establish their 96-DPI baseline after building the layout. Custom-painted geometry uses `DeviceDpi / 96f`. Runtime category chips also scale when created after a rule change. The local form harness checks workflows and produces full and compact snapshots at the active Windows scale; the committed snapshots were reviewed at 125%.
 
 ## Reuse across future apps

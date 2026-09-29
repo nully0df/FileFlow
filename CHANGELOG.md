@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-09-29
+
+- Fix black corners and duplicated labels by restoring background painting for custom buttons.
+- Keep confirmation and rule-editor buttons fully inside their layout rows at 125% scaling.
+- Add pixel regression checks for reused buffers, hover exit, label changes and enabled states in the main window and dialogs.
+
 ## 0.2.0 — 2026-09-29
 
 - Introduce Stillwater, an original visual language with a sage sidebar, teal actions, rounded surfaces and category colors.

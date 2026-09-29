@@ -41,6 +41,7 @@ internal sealed class RulesForm : FlowForm
         var add = Theme.Button("Add rule"); var remove = Theme.Button("Remove selected");
         add.Appearance = remove.Appearance = ButtonAppearance.Quiet;
         add.Width = 110; remove.Width = 170;
+        add.Height = remove.Height = 38;
         add.Click += (_, _) => { var index = _grid.Rows.Add(true, "New folder", ".ext"); _grid.CurrentCell = _grid.Rows[index].Cells[1]; _grid.BeginEdit(true); };
         remove.Click += (_, _) => { if (_grid.CurrentRow is { IsNewRow: false } row) _grid.Rows.Remove(row); };
         editButtons.Controls.AddRange([add, remove]); editor.Controls.Add(editButtons, 0, 1); card.Controls.Add(editor); layout.Controls.Add(card, 0, 1);

@@ -19,7 +19,7 @@ public sealed class DecisionForm : FlowForm
             ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None, BackColor = Theme.Surface, ForeColor = Theme.Ink,
             Font = new Font("Segoe UI", 10), AccessibleName = "Operation details", TabStop = true });
         layout.Controls.Add(card, 0, 1);
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 20, 0, 0) };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 20, 0, 0), Margin = Padding.Empty };
         var proceed = Theme.Button(title == "Undo latest" ? "Restore files" : "Move files", true);
         var cancel = Theme.Button("Cancel"); cancel.Appearance = ButtonAppearance.Quiet;
         proceed.Click += (_, _) => DialogResult = DialogResult.OK;

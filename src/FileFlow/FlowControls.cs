@@ -21,6 +21,9 @@ internal sealed class FlowButton : Button
             ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
         FlatStyle = FlatStyle.Flat;
         FlatAppearance.BorderSize = 0;
+        // ButtonBase starts opaque, which skips OnPaintBackground. Rounded and quiet
+        // buttons need the parent surface repainted or pooled buffers retain old pixels.
+        SetStyle(ControlStyles.Opaque, false);
         BackColor = Color.Transparent;
         Cursor = Cursors.Hand;
         UseVisualStyleBackColor = false;
