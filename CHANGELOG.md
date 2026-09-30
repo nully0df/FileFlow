@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-09-30
+
+- Make category chips clickable filters with an active state, keyboard focus and an All files button.
+- Limit Move, Select all and Clear to the current view; preserve checkbox choices when switching categories.
+- Enable column-header sorting, including numeric file-size sorting, and keep category/size columns compact.
+- Draw consistent row separators across custom and native cells.
+- Show destination categories and the source folder in Move confirmation, then display the completed file count.
+- Exercise actual Move/Undo confirmation dialogs and verify file locations for both filtered and complete batches.
+
 ## 0.2.1 — 2026-09-29
 
 - Fix black corners and duplicated labels by restoring background painting for custom buttons.

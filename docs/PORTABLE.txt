@@ -1,4 +1,4 @@
-FileFlow 0.2.1 for Windows
+FileFlow 0.3.0 for Windows
 
 1. Extract the entire archive to a folder.
 2. Install the .NET 10 Desktop Runtime if Windows asks for it:

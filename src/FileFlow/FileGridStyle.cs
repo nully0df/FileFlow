@@ -6,6 +6,9 @@ internal static class FileGridStyle
 {
     internal static void Attach(DataGridView grid)
     {
+        // A single flat separator for every column. Mixing the native cell border
+        // with antialiased custom cells makes the line change tone at cell edges.
+        grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         grid.CellPainting += (_, e) =>
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.Graphics is null) return;
@@ -61,6 +64,12 @@ internal static class FileGridStyle
                 TextRenderer.DrawText(g, value, font, Rectangle.Round(badge), ink, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
                 e.Handled = true;
             }
+            else e.Paint(e.ClipBounds, DataGridViewPaintParts.All & ~DataGridViewPaintParts.Border);
+            g.SmoothingMode = SmoothingMode.None;
+            using (var separator = new Pen(Theme.Border))
+                g.DrawLine(separator, e.CellBounds.Left, e.CellBounds.Bottom - 1, e.CellBounds.Right - 1, e.CellBounds.Bottom - 1);
+            if (e.Handled) e.Paint(e.ClipBounds, DataGridViewPaintParts.Focus);
+            e.Handled = true;
             g.Restore(state);
         };
     }

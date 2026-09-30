@@ -27,6 +27,7 @@ Category colors add recognition while visible names carry the meaning: blue for 
 - The sidebar stays visually calm. The primary action is placed beside the content it acts on: preview next to the folder, move next to the selection summary.
 - Source, review and action areas are separate rounded surfaces. The empty state uses the same stroke style as the navigation icons.
 - Hover, pressed, disabled and keyboard-focus states are drawn by shared controls. No action depends on color alone.
+- Category chips are buttons: a filled teal state marks the active filter, and All files restores the complete list. Move and bulk selection operate on the current view.
 - The rule editor and confirmation dialog share the same spacing, type, corners and action treatment. Confirmation initially focuses **Cancel**.
 
 ## Windows behavior

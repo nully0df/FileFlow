@@ -18,6 +18,8 @@ public sealed class MainForm : FlowForm
     private readonly FlowButton _cancel = Theme.Button("Cancel");
     private readonly FlowButton _selectAll = Theme.Button("Select all");
     private readonly FlowButton _selectNone = Theme.Button("Clear");
+    private readonly FlowButton _organize = Theme.Button("Organize files");
+    private readonly Label _reviewHeading = Theme.Label("Review your files", 11, true);
     private readonly Label _status = Theme.Label("Choose a folder, then preview where each file will go.", 9, color: Theme.Muted);
     private readonly Label _summary = Theme.Label("0 files selected", 13, true);
     private readonly FlowLayoutPanel _categories = new();
@@ -28,6 +30,7 @@ public sealed class MainForm : FlowForm
     private bool _busy;
     private bool _hasHistory;
     private bool _selectionChanging;
+    private string? _categoryFilter;
 
     public MainForm(string? dataDirectory = null, Func<string, string, bool>? confirm = null)
     {
@@ -49,6 +52,7 @@ public sealed class MainForm : FlowForm
         _undo.Click += async (_, _) => await UndoAsync();
         _rules.Click += (_, _) => EditRules();
         _demo.Click += async (_, _) => await DemoAsync();
+        _organize.Click += (_, _) => { SetCategoryFilter(null); if (_plan is null) _folder.Focus(); else _files.Focus(); };
         _cancel.Click += (_, _) => { _cancellation?.Cancel(); _status.Text = "Stopping safely after the current file…"; };
         _folder.TextChanged += (_, _) => { if (!_busy) InvalidatePreview(); };
         _files.CurrentCellDirtyStateChanged += (_, _) => { if (_files.IsCurrentCellDirty) _files.CommitEdit(DataGridViewDataErrorContexts.Commit); };
@@ -86,7 +90,8 @@ public sealed class MainForm : FlowForm
         side.Controls.Add(brand, 0, 0);
         side.Controls.Add(Theme.Label("WORKSPACE", 8, true, Theme.Muted), 0, 1);
         var active = new SurfacePanel { Dock = DockStyle.Fill, Radius = 12, SurfaceColor = Theme.Surface, Outline = false, Padding = new Padding(14, 0, 10, 0), Margin = Padding.Empty };
-        active.Controls.Add(Theme.Label("Organize files", 10, true, Theme.Accent));
+        _organize.Dock = DockStyle.Fill; _organize.Appearance = ButtonAppearance.Quiet; _organize.Margin = Padding.Empty;
+        active.Controls.Add(_organize);
         side.Controls.Add(active, 0, 2);
         _rules.Appearance = _undo.Appearance = ButtonAppearance.Navigation;
         _rules.Symbol = Glyph.Sliders; _undo.Symbol = Glyph.Undo;
@@ -102,7 +107,7 @@ public sealed class MainForm : FlowForm
         var main = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(30, 24, 30, 22), ColumnCount = 1, RowCount = 6, Margin = Padding.Empty };
         main.RowStyles.Add(new(SizeType.Absolute, 82));
         main.RowStyles.Add(new(SizeType.Absolute, 120));
-        main.RowStyles.Add(new(SizeType.Absolute, 48));
+        main.RowStyles.Add(new(SizeType.Absolute, 60));
         main.RowStyles.Add(new(SizeType.Percent, 100));
         main.RowStyles.Add(new(SizeType.Absolute, 34));
         main.RowStyles.Add(new(SizeType.Absolute, 76));
@@ -134,7 +139,7 @@ public sealed class MainForm : FlowForm
         sourceLayout.Controls.Add(hint, 0, 2); sourceLayout.SetColumnSpan(hint, 3);
         source.Controls.Add(sourceLayout); main.Controls.Add(source, 0, 1);
 
-        _categories.Dock = DockStyle.Fill; _categories.Padding = new Padding(0, 13, 0, 9);
+        _categories.Dock = DockStyle.Fill; _categories.Padding = new Padding(0, 10, 0, 0);
         _categories.Margin = Padding.Empty; _categories.WrapContents = false; _categories.AutoScroll = true;
         main.Controls.Add(_categories, 0, 2);
 
@@ -143,16 +148,30 @@ public sealed class MainForm : FlowForm
         previewLayout.RowStyles.Add(new(SizeType.Absolute, 52)); previewLayout.RowStyles.Add(new(SizeType.Percent, 100));
         var toolbar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Color.Transparent, Margin = Padding.Empty, Padding = new Padding(8, 4, 0, 6) };
         toolbar.ColumnStyles.Add(new(SizeType.Percent, 100)); toolbar.ColumnStyles.Add(new(SizeType.Absolute, 104)); toolbar.ColumnStyles.Add(new(SizeType.Absolute, 76));
-        toolbar.Controls.Add(Theme.Label("Review your files", 11, true), 0, 0);
+        toolbar.Controls.Add(_reviewHeading, 0, 0);
         _selectAll.Appearance = _selectNone.Appearance = ButtonAppearance.Quiet;
         _selectAll.Dock = _selectNone.Dock = DockStyle.Fill;
         _selectAll.Click += (_, _) => SetSelection(true); _selectNone.Click += (_, _) => SetSelection(false);
         toolbar.Controls.Add(_selectAll, 1, 0); toolbar.Controls.Add(_selectNone, 2, 0);
         previewLayout.Controls.Add(toolbar, 0, 0);
+        _files.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
         _files.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Selected", HeaderText = "", Width = 36, AutoSizeMode = DataGridViewAutoSizeColumnMode.None });
-        foreach (var column in new[] { ("File", "File name", 135f), ("Category", "Category", 60f), ("Size", "Size", 44f), ("Destination", "Destination", 132f), ("Status", "Status", 63f) })
-            _files.Columns.Add(new DataGridViewTextBoxColumn { Name = column.Item1, HeaderText = column.Item2, FillWeight = column.Item3, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
+        foreach (var column in new[] { ("File", "File name"), ("Category", "Category"), ("Size", "Size"), ("Destination", "Destination"), ("Status", "Status") })
+            _files.Columns.Add(new DataGridViewTextBoxColumn { Name = column.Item1, HeaderText = column.Item2, ReadOnly = true, SortMode = DataGridViewColumnSortMode.Automatic });
+        _files.Columns[3].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+        _files.Columns[3].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight;
         _files.Columns[1].MinimumWidth = 135; _files.Columns[5].MinimumWidth = 91;
+        _files.SizeChanged += (_, _) => LayoutPreviewColumns();
+        _files.DpiChangedAfterParent += (_, _) => LayoutPreviewColumns();
+        _files.SortCompare += (_, e) =>
+        {
+            e.SortResult = e.Column.Name == "Size"
+                ? ((_files.Rows[e.RowIndex1].Tag as PlanItem)?.Length ?? -1).CompareTo((_files.Rows[e.RowIndex2].Tag as PlanItem)?.Length ?? -1)
+                : StringComparer.OrdinalIgnoreCase.Compare(Convert.ToString(e.CellValue1), Convert.ToString(e.CellValue2));
+            if (e.SortResult == 0)
+                e.SortResult = StringComparer.OrdinalIgnoreCase.Compare(Convert.ToString(_files.Rows[e.RowIndex1].Cells[1].Value), Convert.ToString(_files.Rows[e.RowIndex2].Cells[1].Value));
+            e.Handled = true;
+        };
         _files.AccessibleName = "File preview and selection";
         FileGridStyle.Attach(_files);
         var gridHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface, Margin = Padding.Empty };
@@ -184,10 +203,25 @@ public sealed class MainForm : FlowForm
         try
         {
             foreach (DataGridViewRow row in _files.Rows)
-                if (row.Tag is PlanItem) row.Cells[0].Value = value;
+                if (row.Visible && row.Tag is PlanItem) row.Cells[0].Value = value;
         }
         finally { _selectionChanging = false; }
         UpdateSelection();
+    }
+
+    private void LayoutPreviewColumns()
+    {
+        // Reserve compact metadata columns, then share the remaining space between
+        // the two paths. Explicit widths avoid cached Fill proportions after DPI changes.
+        var scale = _files.DeviceDpi / 96f;
+        _files.Columns[0].Width = (int)(32 * scale);
+        _files.Columns[2].Width = (int)(110 * scale);
+        _files.Columns[3].Width = (int)(80 * scale);
+        _files.Columns[5].Width = (int)(98 * scale);
+        int fixedWidth = new[] { 0, 2, 3, 5 }.Sum(i => _files.Columns[i].Width);
+        int available = _files.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - fixedWidth - 2;
+        _files.Columns[1].Width = Math.Max((int)(175 * scale), (int)(available * .43));
+        _files.Columns[4].Width = Math.Max((int)(190 * scale), available - _files.Columns[1].Width);
     }
 
     private void Browse()
@@ -214,6 +248,7 @@ public sealed class MainForm : FlowForm
                 var index = _files.Rows.Add(true, Path.GetFileName(item.Source), item.Category, Theme.Size(item.Length),
                     Path.GetRelativePath(plan.Root, item.Destination), item.Renamed ? "New name" : "Ready");
                 _files.Rows[index].Tag = item;
+                _files.Rows[index].Cells[1].ToolTipText = Path.GetFileName(item.Source);
                 _files.Rows[index].Cells[4].ToolTipText = item.Destination;
                 if (item.Renamed) _files.Rows[index].Cells[5].Style.ForeColor = Color.FromArgb(166, 111, 19);
             }
@@ -224,26 +259,42 @@ public sealed class MainForm : FlowForm
                 _files.Rows[index].DefaultCellStyle.ForeColor = Theme.Muted;
                 _files.Rows[index].Cells[4].ToolTipText = skipped.Reason;
             }
-            _empty.Visible = _files.Rows.Count == 0;
-            _files.Visible = !_empty.Visible;
-            _empty.Text = "Nothing to organize here.\n\nChoose another folder or adjust your sorting rules.";
             _files.ClearSelection();
             _preferences.LastFolder = plan.Root;
             _status.Text = $"Preview ready · {plan.Items.Count} ready · {plan.Skipped.Count} skipped · No files have moved.";
             SavePreferences();
             UpdateCategoryCounts();
-            UpdateSelection();
+            SetCategoryFilter(_categoryFilter);
         });
     }
 
     private List<PlanItem> SelectedItems() => _files.Rows.Cast<DataGridViewRow>()
-        .Where(r => r.Tag is PlanItem && r.Cells[0].Value is true).Select(r => (PlanItem)r.Tag!).ToList();
+        .Where(r => r.Visible && r.Tag is PlanItem && r.Cells[0].Value is true).Select(r => (PlanItem)r.Tag!).ToList();
+
+    private void SetCategoryFilter(string? category)
+    {
+        if (_busy && _plan is null) return;
+        _categoryFilter = category;
+        _files.CurrentCell = null;
+        foreach (DataGridViewRow row in _files.Rows)
+            row.Visible = category is null || row.Tag is PlanItem item && StringComparer.OrdinalIgnoreCase.Equals(item.Category, category);
+        foreach (CategoryChip chip in _categories.Controls)
+            chip.Active = StringComparer.OrdinalIgnoreCase.Equals(chip.CategoryName, category);
+        _reviewHeading.Text = category is null ? "Review your files" : $"Review · {category}";
+        bool any = _files.Rows.Cast<DataGridViewRow>().Any(r => r.Visible);
+        _files.Visible = any; _empty.Visible = !any;
+        _empty.Text = _plan is null ? "Ready when you are.\nChoose a folder and click Preview files."
+            : category is null ? "Nothing to organize here.\nChoose another folder or adjust your sorting rules."
+            : $"No {category} files here.\nChoose another category or return to All files.";
+        UpdateSelection();
+    }
 
     private void UpdateSelection()
     {
         var selected = SelectedItems();
-        _summary.Text = $"{selected.Count} files selected  ·  {Theme.Size(selected.Sum(i => i.Length))}";
-        _apply.Text = selected.Count == 0 ? "Move selected" : $"Move {selected.Count} files";
+        var noun = selected.Count == 1 ? "file" : "files";
+        _summary.Text = $"{selected.Count} {noun} selected  ·  {Theme.Size(selected.Sum(i => i.Length))}";
+        _apply.Text = selected.Count == 0 ? "Move selected" : $"Move {selected.Count} {noun}";
         UpdateButtons();
     }
 
@@ -253,13 +304,15 @@ public sealed class MainForm : FlowForm
         var selected = SelectedItems();
         if (selected.Count == 0) return;
         var plan = _plan with { Items = selected };
-        if (!_confirm($"Move {selected.Count} files into the folders shown in the preview?\n\nExisting files will not be overwritten. You can undo this operation.", "Organize files")) return;
+        var destinations = string.Join(", ", selected.Select(i => i.Category).Distinct());
+        if (!_confirm($"Move {selected.Count} files into {destinations}?\n\nInside: {plan.Root}\n\nOnly checked files in the current view will move. You can undo this operation.", "Organize files")) return;
         await BusyAsync("Organizing files…", async token =>
         {
             _plan = null;
             var progress = Progress();
             var result = await Task.Run(() => new Organizer(_history).Apply(plan, progress, token), token);
             InvalidatePreview();
+            _empty.Text = $"{result.Succeeded} files organized.\nOpen the category folders inside your chosen folder.\nUse Undo latest to restore the files.";
             _status.Text = $"{result.Succeeded} files moved{(result.Cancelled ? " · Cancelled" : "")} · {result.Problems.Count} skipped. Preview again to see what remains.";
             ShowProblems(result);
         });
@@ -328,6 +381,9 @@ public sealed class MainForm : FlowForm
 
     private void InvalidatePreview()
     {
+        _categoryFilter = null;
+        foreach (CategoryChip chip in _categories.Controls) chip.Active = chip.CategoryName is null;
+        _reviewHeading.Text = "Review your files";
         _plan = null; _files.Rows.Clear(); _empty.Visible = true; _files.Visible = false;
         _empty.Text = "Ready when you are.\n\nChoose a folder and click Preview files.";
         _status.Text = "Create a fresh preview before organizing files.";
@@ -337,11 +393,11 @@ public sealed class MainForm : FlowForm
 
     private void UpdateButtons()
     {
-        _browse.Enabled = _preview.Enabled = _rules.Enabled = _demo.Enabled = _folder.Enabled = _files.Enabled = !_busy;
+        _browse.Enabled = _preview.Enabled = _rules.Enabled = _demo.Enabled = _folder.Enabled = _files.Enabled = _categories.Enabled = _organize.Enabled = !_busy;
         _undo.Enabled = !_busy && _hasHistory;
         _apply.Enabled = !_busy && _plan is not null && SelectedItems().Count > 0;
         _cancel.Visible = _busy;
-        _selectAll.Enabled = _selectNone.Enabled = !_busy && _plan is { Items.Count: > 0 };
+        _selectAll.Enabled = _selectNone.Enabled = !_busy && _files.Rows.Cast<DataGridViewRow>().Any(r => r.Visible && r.Tag is PlanItem);
     }
 
     private void EditRules()
@@ -355,9 +411,10 @@ public sealed class MainForm : FlowForm
     private void UpdateRulesSummary()
     {
         while (_categories.Controls.Count > 0) _categories.Controls[0].Dispose();
-        foreach (var category in _preferences.Rules.Where(r => r.Enabled).Select(r => r.Folder).Distinct())
+        foreach (var category in new string?[] { null }.Concat(_preferences.Rules.Where(r => r.Enabled).Select(r => r.Folder).Distinct(StringComparer.OrdinalIgnoreCase)))
         {
-            var chip = new CategoryChip(category);
+            var chip = new CategoryChip(category) { Active = StringComparer.OrdinalIgnoreCase.Equals(category, _categoryFilter) };
+            chip.Click += (_, _) => SetCategoryFilter(chip.CategoryName);
             if (IsHandleCreated) chip.Scale(new SizeF(DeviceDpi / 96f, DeviceDpi / 96f));
             _categories.Controls.Add(chip);
         }
@@ -367,7 +424,7 @@ public sealed class MainForm : FlowForm
     private void UpdateCategoryCounts()
     {
         foreach (CategoryChip chip in _categories.Controls)
-            chip.Count = _plan is null ? null : _plan.Items.Count(i => i.Category == chip.CategoryName);
+            chip.Count = _plan is null ? null : chip.CategoryName is null ? _files.Rows.Count : _plan.Items.Count(i => StringComparer.OrdinalIgnoreCase.Equals(i.Category, chip.CategoryName));
     }
 
     private void SavePreferences()

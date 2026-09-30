@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Drawing.Imaging;
 using FileFlow;
 using FileFlow.Core;
@@ -17,7 +18,7 @@ internal static class Program
         Directory.CreateDirectory(data);
         Branding.Export(Path.Combine(testRoot, "brand"));
         int result = 1;
-        using var form = new MainForm(data, (_, _) => true);
+        using var form = new MainForm(data);
         form.Shown += async (_, _) =>
         {
             try
@@ -37,7 +38,36 @@ internal static class Program
                 sample.PerformClick();
                 await Until(() => preview.Enabled && grid.Rows.Count == 7);
                 Check(move.Text == "Move 6 files", "Sample preview has six matching files");
+                Check(grid.Columns[1].Width >= grid.Columns[4].Width * .6, "File name keeps readable width beside destination");
                 Check(grid.Rows.Cast<DataGridViewRow>().Count(r => Convert.ToString(r.Cells[5].Value) == "New name") == 1, "Collision is visible in preview");
+                var root = folder.Text;
+                Button Filter(string name) => controls.OfType<Button>().Single(b => b.AccessibleName == name + " filter");
+                Filter("Documents").PerformClick();
+                Check(grid.Rows.Cast<DataGridViewRow>().Count(r => r.Visible) == 2 && move.Text == "Move 2 files", "Category button filters rows and the move count");
+                var document = grid.Rows.Cast<DataGridViewRow>().First(r => r.Visible);
+                document.Cells[0].Value = false;
+                Filter("Images").PerformClick();
+                Check(move.Text == "Move 1 file", "Hidden checked files are excluded from the move selection");
+                controls.OfType<Button>().Single(b => b.Text == "Clear").PerformClick();
+                Filter("Documents").PerformClick();
+                Check(move.Text == "Move 1 file", "Clear affects only the current category and checkbox choices persist");
+                Filter("Installers").PerformClick();
+                Check(!move.Enabled && !grid.Visible, "Empty category disables Move and shows the empty state");
+                controls.OfType<Button>().Single(b => b.Text == "Organize files").PerformClick();
+                Check(grid.Rows.Cast<DataGridViewRow>().All(r => r.Visible), "Organize files returns to the full preview");
+                controls.OfType<Button>().Single(b => b.Text == "Select all").PerformClick();
+                File.AppendAllText(Path.Combine(root, "Autumn photo.jpg"), new string('x', 16384));
+                File.WriteAllText(Path.Combine(root, "Playlist.mp3"), "x");
+                preview.PerformClick();
+                await Until(() => preview.Enabled && grid.Rows.Count == 7);
+                grid.Sort(grid.Columns[3], ListSortDirection.Ascending);
+                var lengths = grid.Rows.Cast<DataGridViewRow>().Where(r => r.Tag is PlanItem).Select(r => ((PlanItem)r.Tag!).Length).ToArray();
+                Check(lengths.SequenceEqual(lengths.Order()), "Size sorting uses bytes rather than formatted text");
+                grid.Sort(grid.Columns[2], ListSortDirection.Ascending);
+                var names = grid.Rows.Cast<DataGridViewRow>().Select(r => Convert.ToString(r.Cells[2].Value)).ToArray();
+                Check(names.SequenceEqual(names.Order(StringComparer.OrdinalIgnoreCase)), "Category header supports sorting");
+                grid.Sort(grid.Columns[1], ListSortDirection.Ascending);
+                Check(move.Text == "Move 6 files", "Sorting preserves checkbox selections and file identities");
                 // Show the end of the real fixture path without changing the previewed folder.
                 folder.SelectionStart = folder.TextLength; folder.ScrollToCaret(); grid.Focus();
                 Save(form, Path.Combine(testRoot, "fileflow-preview.png"));
@@ -47,7 +77,19 @@ internal static class Program
                 ButtonPaintingChecks.Run(controls.OfType<Button>());
                 Save(form, Path.Combine(testRoot, "fileflow-compact.png"));
                 form.ClientSize = originalSize;
-                var root = folder.Text;
+                Filter("Documents").PerformClick();
+                ConfirmAction(move, "Cancel");
+                Check(Directory.GetFiles(root).Length == 7 && !undo.Enabled, "Cancelling the real Move dialog leaves files untouched");
+                ConfirmAction(move, "Move files", Path.Combine(testRoot, "fileflow-confirm.png"));
+                await Until(() => preview.Enabled && undo.Enabled && grid.Rows.Count == 0);
+                Check(Directory.GetFiles(root).Length == 5 && File.Exists(Path.Combine(root, "Documents", "Project proposal.pdf")) &&
+                    File.Exists(Path.Combine(root, "Autumn photo.jpg")), "Confirmed category Move sorts only visible selected files into real folders");
+                ConfirmAction(undo, "Restore files");
+                await Until(() => preview.Enabled && !undo.Enabled);
+                Check(Directory.GetFiles(root).Length == 7, "Real Undo confirmation restores the filtered batch");
+                preview.PerformClick();
+                await Until(() => preview.Enabled && grid.Rows.Count == 7);
+                Filter("All files").PerformClick();
                 var first = grid.Rows.Cast<DataGridViewRow>().First(r => r.Tag is PlanItem);
                 controls.OfType<Button>().Single(b => b.Text == "Clear").PerformClick();
                 Check(!move.Enabled, "Clear selection disables moving");
@@ -56,20 +98,12 @@ internal static class Program
                 first.Cells[0].Value = false;
                 Check(move.Text == "Move 5 files", "Selection updates the move count");
                 first.Cells[0].Value = true;
-                move.PerformClick();
+                ConfirmAction(move, "Move files");
                 await Until(() => preview.Enabled && undo.Enabled && grid.Rows.Count == 0);
                 Check(Directory.GetFiles(root).Length == 1, "Move action left only unmatched file at root");
                 Check(File.ReadAllText(Path.Combine(root, "Documents", "Meeting notes.txt")).StartsWith("An existing sample"), "Collision preserved the existing file");
                 Check(File.Exists(Path.Combine(root, "Documents", "Meeting notes (1).txt")), "Renamed file moved to the previewed name");
-                using (var confirmPreview = new DecisionForm("Move 6 files into the folders shown in the preview?\n\nExisting files will not be overwritten. You can undo this operation.", "Organize files"))
-                {
-                    confirmPreview.Show(form); await Task.Delay(80);
-                    ButtonPaintingChecks.Run(Descendants(confirmPreview).OfType<Button>());
-                    Save(confirmPreview, Path.Combine(testRoot, "fileflow-confirm.png"));
-                    Descendants(confirmPreview).OfType<Button>().Single(b => b.Text == "Cancel").PerformClick();
-                    Check(confirmPreview.DialogResult == DialogResult.Cancel, "Confirmation cancellation remains available");
-                }
-                undo.PerformClick();
+                ConfirmAction(undo, "Restore files");
                 await Until(() => preview.Enabled && !undo.Enabled);
                 Check(Directory.GetFiles(root).Length == 7, "Undo action restored all six files");
                 preview.PerformClick();
@@ -111,7 +145,7 @@ internal static class Program
                 controls.OfType<Button>().Single(b => b.Text == "Sorting rules").PerformClick();
                 if (ruleError is not null) throw ruleError;
                 Check(!move.Enabled, "Saving rules invalidates the previous preview");
-                using var restarted = new MainForm(data, (_, _) => true);
+                using var restarted = new MainForm(data);
                 restarted.Show();
                 var fresh = Descendants(restarted).ToArray();
                 var freshPreview = fresh.OfType<Button>().Single(b => b.Text == "Preview files");
@@ -138,6 +172,31 @@ internal static class Program
             yield return child;
             foreach (var descendant in Descendants(child)) yield return descendant;
         }
+    }
+
+    private static void ConfirmAction(Button action, string choice, string? screenshot = null)
+    {
+        bool observed = false;
+        Exception? error = null;
+        using var timer = new System.Windows.Forms.Timer { Interval = 100 };
+        timer.Tick += (_, _) =>
+        {
+            var dialog = Application.OpenForms.OfType<DecisionForm>().SingleOrDefault();
+            if (dialog is null) return;
+            timer.Stop(); observed = true;
+            try
+            {
+                var buttons = Descendants(dialog).OfType<Button>().ToArray();
+                ButtonPaintingChecks.Run(buttons);
+                if (screenshot is not null) Save(dialog, screenshot);
+                buttons.Single(b => b.Text == choice).PerformClick();
+            }
+            catch (Exception ex) { error = ex; dialog.Close(); }
+        };
+        timer.Start();
+        action.PerformClick();
+        if (error is not null) throw error;
+        Check(observed, $"'{action.Text}' opens an actionable confirmation with '{choice}'");
     }
 
     private static async Task Until(Func<bool> condition)

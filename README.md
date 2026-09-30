@@ -16,6 +16,8 @@ The **Stillwater** interface pairs a sage sidebar, teal actions and rounded surf
 
 - Preview files and their exact destinations before applying a batch.
 - Choose individual files with checkboxes, or use **Select all** and **Clear**.
+- Filter by category with clickable chips, or return to **All files**.
+- Sort the table by clicking column headers; file sizes sort numerically.
 - Edit extension-to-folder rules; settings persist between launches.
 - Resolve existing names with suffixes such as `report (1).pdf`.
 - Refuse new conflicts that appear after the preview, without overwriting anything.
@@ -52,8 +54,10 @@ dotnet run --project src/FileFlow
 
 1. Click **Try a sample folder**, or choose a folder you want to organize.
 2. Click **Preview files**. Review the destination, status and selected checkboxes.
-3. Click **Move N files** and confirm the displayed count.
+3. Optionally choose a category. Click **Move N files**, then **Move files** in the confirmation. FileFlow creates the category folders inside the chosen folder and moves the selected files into them.
 4. Use **Undo latest** to restore the most recent remaining batch.
+
+**Move**, **Select all** and **Clear** apply only to visible files in the current category. Checkbox choices are remembered when changing filters; hidden checked files do not move. Choose **All files** to work with the entire preview. **Organize files** in the sidebar also returns to the full list.
 
 **Sorting rules** lets you edit categories, enable or disable them, and use **Add rule** or **Remove selected**. Invalid or duplicate extensions show an explanation inside the editor. Extensions use a leading dot and are separated with commas. Matching ignores extension case.
 
@@ -95,7 +99,7 @@ dotnet run --project tests/FileFlow.Checks -c Release --no-build
 dotnet run --project tests/FileFlow.UiChecks -c Release --no-build -- artifacts/ui
 ```
 
-The package-free check runner returns a nonzero exit code on failure. It covers 30 filesystem scenarios: collisions, stale previews, partial failures, cancellation, path containment, occupied originals, modified content, persistent history and interrupted operations. The Windows UI harness exercises the actual forms with generated files, including bulk and individual selection, moving, undo, rule controls, inline validation and settings reload. It renders ordinary and compact layouts, the empty state, the rule editor and a confirmation dialog to PNG, and checks for cross-thread UI access. Move and undo confirmations are supplied directly; cancellation of the real confirmation form is also exercised. Native file-picker interaction remains a manual check.
+The package-free check runner returns a nonzero exit code on failure. It covers 30 filesystem scenarios: collisions, stale previews, partial failures, cancellation, path containment, occupied originals, modified content, persistent history and interrupted operations. The Windows UI harness exercises the actual forms with generated files, including category filters, numeric sorting, selection, rule controls, validation and settings reload. It accepts and cancels the real Move/Undo confirmation dialogs, then verifies actual file locations for filtered and complete batches. It renders ordinary and compact layouts, the empty state, the rule editor and a confirmation dialog to PNG, and checks for cross-thread UI access. Native file-picker interaction remains a manual check.
 
 GitHub Actions builds, runs the filesystem checks and uploads the portable Windows build. The UI harness runs locally. The screenshots in this repository were rendered from the forms at Windows scaling of 125%; they do not capture live desktop compositor effects.
 
@@ -129,7 +133,7 @@ For a step-by-step Russian explanation and small exercises, see [Разбор п
 
 ## Next ideas
 
-Not implemented in v0.2: optional recursion with exclusions, date-based folder rules, an operation-history browser and rule import/export. Automatic background sorting is intentionally outside the initial scope.
+Not implemented in v0.3: optional recursion with exclusions, date-based folder rules, an operation-history browser and rule import/export. Automatic background sorting is intentionally outside the initial scope.
 
 ## License
 

@@ -6,7 +6,7 @@ namespace FileFlow;
 internal enum ButtonAppearance { Primary, Secondary, Quiet, Navigation }
 internal enum Glyph { None, Folder, Scan, Arrow, Undo, Sliders, Grid, Shield }
 
-internal sealed class FlowButton : Button
+internal class FlowButton : Button
 {
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal ButtonAppearance Appearance { get; set; }
@@ -14,6 +14,8 @@ internal sealed class FlowButton : Button
     internal Glyph Symbol { get; set; }
     private bool _hover;
     private bool _pressed;
+    protected bool Hovered => _hover;
+    protected bool Pressed => _pressed;
 
     internal FlowButton()
     {
@@ -114,29 +116,52 @@ internal sealed class SurfacePanel : Panel
     }
 }
 
-internal sealed class CategoryChip : Control
+internal sealed class CategoryChip : FlowButton
 {
-    internal string CategoryName { get; }
+    internal string? CategoryName { get; }
     private int? _count;
+    private bool _active;
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    internal int? Count { get => _count; set { _count = value; AccessibleName = $"{CategoryName}: {value?.ToString() ?? "no preview"}"; Invalidate(); } }
-    internal CategoryChip(string category)
+    internal int? Count
+    {
+        get => _count;
+        set
+        {
+            _count = value;
+            var name = CategoryName ?? "All files";
+            Text = value.HasValue ? $"{name}  {value}" : name;
+            AccessibleName = $"{name} filter";
+            AccessibleDescription = $"{(_active ? "Selected. " : "")}{value?.ToString() ?? "No preview"} files. Filters the preview and move selection.";
+            Invalidate();
+        }
+    }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal bool Active { get => _active; set { _active = value; Count = _count; } }
+    internal CategoryChip(string? category)
     {
         CategoryName = category;
-        Text = category;
-        AccessibleName = category;
         Font = new Font("Segoe UI", 8.5f);
-        Size = new Size(category is "Documents" or "Installers" ? 118 : 102, 30);
+        Size = new Size(category is "Documents" or "Installers" ? 105 : category is null ? 86 : 90, 30);
         Margin = new Padding(0, 0, 7, 0);
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        Count = null;
     }
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var (ink, tint) = Theme.HighContrast ? (Theme.Ink, Theme.Surface) : Theme.Category(CategoryName);
-        Theme.FillRound(e.Graphics, new RectangleF(0, 0, Width - 1, Height - 1), 10 * DeviceDpi / 96f, tint);
-        var label = _count.HasValue ? $"{CategoryName}  {_count}" : CategoryName;
-        TextRenderer.DrawText(e.Graphics, label, Font, ClientRectangle, ink,
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var scale = DeviceDpi / 96f;
+        var (ink, tint) = Theme.HighContrast ? (Theme.Ink, Theme.Surface) : Theme.Category(CategoryName ?? "");
+        if (Active) { tint = Theme.Accent; ink = Theme.HighContrast ? SystemColors.HighlightText : Color.White; }
+        if (!Enabled) ink = Theme.Muted;
+        var bounds = new RectangleF(1, 1, Width - 3, Height - 3);
+        Theme.FillRound(g, bounds, 10 * scale, tint);
+        if ((Hovered || Pressed || Focused) && Enabled)
+        {
+            using var path = Theme.Round(RectangleF.Inflate(bounds, -2, -2), 8 * scale);
+            using var pen = new Pen(ink, Pressed ? 2 : 1) { DashStyle = Focused && ShowFocusCues ? DashStyle.Dot : DashStyle.Solid };
+            g.DrawPath(pen, path);
+        }
+        TextRenderer.DrawText(g, Text, Font, ClientRectangle, ink,
             TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis);
     }
 }
